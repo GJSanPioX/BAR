@@ -631,13 +631,13 @@
     </div>
 
     <!-- Firebase SDK y SheetJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script type="module">
         // Import Firebase modules
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
         import { getDatabase, ref, push, set, get, onValue, off, remove, update } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
         
-        // Import SheetJS para procesamiento real de Excel
-        import * as XLSX from 'https://cdn.skypack.dev/xlsx@0.18.5';
+        // SheetJS ya está cargado globalmente como XLSX
 
         // Firebase configuration (REEMPLAZAR CON TU CONFIGURACIÓN)
         const firebaseConfig = {
@@ -806,7 +806,7 @@
             }
         }
 
-        // Procesar archivo Excel REAL
+        // Procesar archivo Excel REAL - VERSIÓN CORREGIDA
         window.procesarExcel = async function(input) {
             const file = input.files[0];
             if (!file) return;
@@ -817,26 +817,38 @@
 
             try {
                 const reader = new FileReader();
-                reader.onload = function(e) {
+                reader.onload = async function(e) {
                     try {
                         // Leer el archivo Excel con SheetJS
                         const data = new Uint8Array(e.target.result);
-                        const workbook = XLSX.read(data, { type: 'array' });
+                        const workbook = XLSX.read(data, { 
+                            type: 'array',
+                            cellDates: true,
+                            cellNF: true,
+                            cellText: false
+                        });
                         
-                        document.getElementById('import-status').textContent = 'Procesando datos...';
+                        document.getElementById('import-status').textContent = 'Analizando estructura...';
                         
                         // Procesar la primera hoja
                         const firstSheetName = workbook.SheetNames[0];
                         const worksheet = workbook.Sheets[firstSheetName];
-                        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+                            header: 1,
+                            defval: '',
+                            blankrows: false
+                        });
                         
-                        console.log(`Procesando ${jsonData.length} filas del Excel...`);
+                        console.log(`📊 Archivo Excel leído: ${jsonData.length} filas`);
+                        console.log('🔍 Encabezados:', jsonData[0]);
+                        
+                        document.getElementById('import-status').textContent = `Procesando ${jsonData.length} filas...`;
                         
                         // Procesar datos reales del Excel
-                        procesarDatosExcelReal(jsonData);
+                        await procesarDatosExcelReal(jsonData);
                         
                     } catch (error) {
-                        console.error('Error procesando Excel:', error);
+                        console.error('❌ Error procesando Excel:', error);
                         mostrarNotificacion('❌ Error procesando Excel: ' + error.message, 'error');
                         document.getElementById('import-progress').classList.add('hidden');
                     }
@@ -844,17 +856,21 @@
                 reader.readAsArrayBuffer(file);
 
             } catch (error) {
-                mostrarNotificacion('❌ Error leyendo archivo', 'error');
+                console.error('❌ Error leyendo archivo:', error);
+                mostrarNotificacion('❌ Error leyendo archivo: ' + error.message, 'error');
                 document.getElementById('import-progress').classList.add('hidden');
             }
         };
 
-        // Procesar datos REALES del Excel
-        function procesarDatosExcelReal(jsonData) {
+        // Procesar datos REALES del Excel - VERSIÓN MEJORADA
+        async function procesarDatosExcelReal(jsonData) {
             let productosNuevos = 0;
             let productosActualizados = 0;
             let stockSumado = 0;
             let errores = [];
+            let filasValidas = 0;
+            
+            console.log('🚀 Iniciando procesamiento de datos...');
             
             // Mapa para agrupar productos únicos
             const productosDelExcel = new Map();
@@ -863,57 +879,91 @@
             for (let i = 1; i < jsonData.length; i++) {
                 const fila = jsonData[i];
                 
+                // Log cada fila para debug
+                if (i <= 5 || i % 10 === 0) {
+                    console.log(`📝 Procesando fila ${i}:`, fila ? fila.slice(10, 16) : 'undefined');
+                }
+                
                 // Verificar que la fila tenga datos suficientes
-                if (!fila || fila.length < 12) {
-                    errores.push(`Fila ${i}: Datos incompletos`);
+                if (!fila || fila.length < 16) {
+                    errores.push(`Fila ${i}: Datos incompletos (${fila ? fila.length : 0} columnas)`);
                     continue;
                 }
                 
-                const descripcion = fila[11]; // Descripción Art.
-                const precio = fila[12]; // Precio/Pieza/Kg
-                const cantidad = fila[15]; // Cantidad
-                const gtin = fila[10]; // GTIN
+                const descripcion = fila[11] ? String(fila[11]).trim() : ''; // Descripción Art.
+                const precio = parseFloat(fila[12]) || 0; // Precio/Pieza/Kg
+                const cantidad = parseInt(fila[15]) || 1; // Cantidad
+                const gtin = fila[10] ? String(fila[10]).trim() : ''; // GTIN
                 
-                // Validaciones
-                if (!descripcion || descripcion === '') {
-                    errores.push(`Fila ${i}: Sin descripción`);
+                // Validaciones más estrictas
+                if (!descripcion || descripcion === '' || descripcion === 'undefined') {
+                    errores.push(`Fila ${i}: Sin descripción válida`);
                     continue;
                 }
                 
-                if (!precio || isNaN(parseFloat(precio))) {
-                    errores.push(`Fila ${i}: Precio inválido (${precio})`);
+                if (!precio || precio <= 0 || isNaN(precio)) {
+                    errores.push(`Fila ${i}: Precio inválido (${fila[12]})`);
                     continue;
                 }
+                
+                filasValidas++;
                 
                 // Usar GTIN como clave única, o descripción si no hay GTIN
-                const clave = gtin || descripcion.trim().toUpperCase();
+                const clave = gtin || descripcion.toUpperCase();
                 
                 if (productosDelExcel.has(clave)) {
                     // Producto duplicado - sumar cantidad
                     const productoExistente = productosDelExcel.get(clave);
-                    productoExistente.cantidadTotal += parseInt(cantidad) || 1;
+                    productoExistente.cantidadTotal += cantidad;
+                    productoExistente.filas.push(i);
                 } else {
                     // Nuevo producto
                     productosDelExcel.set(clave, {
-                        nombre: descripcion.trim(),
-                        precio: parseFloat(precio),
-                        cantidadTotal: parseInt(cantidad) || 1,
+                        nombre: descripcion,
+                        precio: precio,
+                        cantidadTotal: cantidad,
                         gtin: gtin,
-                        categoria: determinarCategoria(descripcion)
+                        categoria: determinarCategoria(descripcion),
+                        filas: [i]
                     });
+                }
+                
+                // Actualizar progreso cada 10 filas
+                if (i % 10 === 0) {
+                    document.getElementById('import-status').textContent = 
+                        `Procesando fila ${i}/${jsonData.length - 1} - ${productosDelExcel.size} productos únicos...`;
+                    await new Promise(resolve => setTimeout(resolve, 10)); // Micro-pausa para UI
                 }
             }
             
-            document.getElementById('import-status').textContent = `Integrando ${productosDelExcel.size} productos...`;
+            console.log(`✅ Procesamiento completado:`);
+            console.log(`   📊 Filas válidas: ${filasValidas}`);
+            console.log(`   ❌ Errores: ${errores.length}`);
+            console.log(`   🛍️ Productos únicos: ${productosDelExcel.size}`);
+            
+            document.getElementById('import-status').textContent = 
+                `Integrando ${productosDelExcel.size} productos únicos en inventario...`;
             
             // Integrar productos en el inventario existente
-            productosDelExcel.forEach((productoExcel, clave) => {
+            let contador = 0;
+            for (const [clave, productoExcel] of productosDelExcel) {
+                contador++;
+                
                 // Buscar si el producto ya existe en nuestro inventario
-                const productoExistente = productos.find(p => 
-                    p.nombre.toUpperCase().includes(productoExcel.nombre.toUpperCase()) ||
-                    productoExcel.nombre.toUpperCase().includes(p.nombre.toUpperCase()) ||
-                    (productoExcel.gtin && p.gtin === productoExcel.gtin)
-                );
+                const productoExistente = productos.find(p => {
+                    // Comparación por GTIN (más precisa)
+                    if (productoExcel.gtin && p.gtin === productoExcel.gtin) return true;
+                    
+                    // Comparación por nombre (más flexible)
+                    const nombreExistente = p.nombre.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    const nombreNuevo = productoExcel.nombre.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    
+                    return nombreExistente.includes(nombreNuevo) || 
+                           nombreNuevo.includes(nombreExistente) ||
+                           (nombreExistente.length > 5 && nombreNuevo.length > 5 && 
+                            (nombreExistente.includes(nombreNuevo.substring(0, 10)) || 
+                             nombreNuevo.includes(nombreExistente.substring(0, 10))));
+                });
                 
                 if (productoExistente) {
                     // Producto existe - actualizar stock y precio
@@ -924,25 +974,43 @@
                     }
                     productosActualizados++;
                     stockSumado += productoExcel.cantidadTotal;
+                    
+                    console.log(`🔄 Actualizado: ${productoExistente.nombre} (+${productoExcel.cantidadTotal})`);
                 } else {
                     // Producto nuevo - agregar al inventario
                     const nuevoProducto = {
-                        id: Date.now() + Math.random(),
+                        id: Date.now() + Math.random() + contador,
                         nombre: productoExcel.nombre,
                         precio: productoExcel.precio,
                         stock: productoExcel.cantidadTotal,
                         categoria: productoExcel.categoria,
-                        gtin: productoExcel.gtin
+                        gtin: productoExcel.gtin || null
                     };
                     productos.push(nuevoProducto);
                     productosNuevos++;
+                    
+                    console.log(`➕ Nuevo: ${nuevoProducto.nombre} (${nuevoProducto.stock})`);
                 }
-            });
+                
+                // Actualizar progreso
+                if (contador % 5 === 0) {
+                    document.getElementById('import-status').textContent = 
+                        `Integrando producto ${contador}/${productosDelExcel.size}...`;
+                    await new Promise(resolve => setTimeout(resolve, 5));
+                }
+            }
+            
+            console.log(`🎯 Integración completada:`);
+            console.log(`   ➕ Productos nuevos: ${productosNuevos}`);
+            console.log(`   🔄 Productos actualizados: ${productosActualizados}`);
+            console.log(`   📦 Stock total sumado: ${stockSumado}`);
             
             // Guardar cambios
+            document.getElementById('import-status').textContent = 'Guardando cambios...';
             guardarDatos();
             
             // Actualizar interfaz
+            document.getElementById('import-status').textContent = 'Actualizando interfaz...';
             mostrarProductos();
             mostrarTablaProductos();
             actualizarSelectAjuste();
@@ -959,11 +1027,20 @@
             
             document.getElementById('import-progress').classList.add('hidden');
             
+            // Notificación final
             if (errores.length === 0) {
-                mostrarNotificacion(`✅ Excel importado: ${productosNuevos} nuevos, ${productosActualizados} actualizados`, 'success');
+                mostrarNotificacion(
+                    `✅ ¡Éxito! ${productosNuevos} nuevos + ${productosActualizados} actualizados = ${productosDelExcel.size} productos totales`, 
+                    'success'
+                );
             } else {
-                mostrarNotificacion(`⚠️ Excel importado con ${errores.length} errores - ver detalles`, 'info');
+                mostrarNotificacion(
+                    `⚠️ Importado con ${errores.length} errores. ${productosNuevos + productosActualizados} productos procesados.`, 
+                    'info'
+                );
             }
+            
+            console.log('🎉 Importación Excel completada exitosamente!');
         }
 
         // Determinar categoría por nombre
