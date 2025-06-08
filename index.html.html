@@ -630,11 +630,14 @@
         </footer>
     </div>
 
-    <!-- Firebase SDK -->
+    <!-- Firebase SDK y SheetJS -->
     <script type="module">
         // Import Firebase modules
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
         import { getDatabase, ref, push, set, get, onValue, off, remove, update } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
+        
+        // Import SheetJS para procesamiento real de Excel
+        import * as XLSX from 'https://cdn.skypack.dev/xlsx@0.18.5';
 
         // Firebase configuration (REEMPLAZAR CON TU CONFIGURACIÓN)
         const firebaseConfig = {
@@ -803,23 +806,37 @@
             }
         }
 
-        // Procesar archivo Excel
+        // Procesar archivo Excel REAL
         window.procesarExcel = async function(input) {
             const file = input.files[0];
             if (!file) return;
 
             document.getElementById('import-progress').classList.remove('hidden');
             document.getElementById('import-results').classList.add('hidden');
+            document.getElementById('import-status').textContent = 'Leyendo archivo Excel...';
 
             try {
-                // Simular SheetJS (en implementación real necesitarías la librería)
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     try {
-                        // Aquí iría el procesamiento real del Excel
-                        // Por ahora simulamos datos
-                        procesarDatosExcel(simularDatosExcel());
+                        // Leer el archivo Excel con SheetJS
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        
+                        document.getElementById('import-status').textContent = 'Procesando datos...';
+                        
+                        // Procesar la primera hoja
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                        
+                        console.log(`Procesando ${jsonData.length} filas del Excel...`);
+                        
+                        // Procesar datos reales del Excel
+                        procesarDatosExcelReal(jsonData);
+                        
                     } catch (error) {
+                        console.error('Error procesando Excel:', error);
                         mostrarNotificacion('❌ Error procesando Excel: ' + error.message, 'error');
                         document.getElementById('import-progress').classList.add('hidden');
                     }
@@ -832,50 +849,96 @@
             }
         };
 
-        // Simular datos de Excel (reemplazar con procesamiento real)
-        function simularDatosExcel() {
-            return [
-                { nombre: 'CZA AMSTEL RADLER LT 33CL', precio: 0.45, cantidad: 24, categoria: 'Bebidas' },
-                { nombre: 'PATATA CASERA GALLO ROJO 160GR', precio: 1.55, cantidad: 10, categoria: 'Comida' },
-                { nombre: 'VERMUT MIRO CASERO 1,5L', precio: 6.30, cantidad: 5, categoria: 'Bebidas' },
-                { nombre: 'COCA-COLA LT 33CL REGULAR', precio: 0.61, cantidad: 30, categoria: 'Bebidas' }
-            ];
-        }
-
-        // Procesar datos del Excel
-        function procesarDatosExcel(datosExcel) {
+        // Procesar datos REALES del Excel
+        function procesarDatosExcelReal(jsonData) {
             let productosNuevos = 0;
             let productosActualizados = 0;
             let stockSumado = 0;
-
-            document.getElementById('import-status').textContent = 'Procesando productos...';
-
-            datosExcel.forEach(item => {
-                const productoExistente = productos.find(p => 
-                    p.nombre.toLowerCase().includes(item.nombre.toLowerCase()) ||
-                    item.nombre.toLowerCase().includes(p.nombre.toLowerCase())
-                );
-
-                if (productoExistente) {
-                    // Producto existe - sumar stock y actualizar precio
-                    productoExistente.stock += item.cantidad || 0;
-                    productoExistente.precio = item.precio || productoExistente.precio;
-                    productosActualizados++;
-                    stockSumado += item.cantidad || 0;
+            let errores = [];
+            
+            // Mapa para agrupar productos únicos
+            const productosDelExcel = new Map();
+            
+            // Procesar cada fila (empezar desde fila 1, saltar encabezados)
+            for (let i = 1; i < jsonData.length; i++) {
+                const fila = jsonData[i];
+                
+                // Verificar que la fila tenga datos suficientes
+                if (!fila || fila.length < 12) {
+                    errores.push(`Fila ${i}: Datos incompletos`);
+                    continue;
+                }
+                
+                const descripcion = fila[11]; // Descripción Art.
+                const precio = fila[12]; // Precio/Pieza/Kg
+                const cantidad = fila[15]; // Cantidad
+                const gtin = fila[10]; // GTIN
+                
+                // Validaciones
+                if (!descripcion || descripcion === '') {
+                    errores.push(`Fila ${i}: Sin descripción`);
+                    continue;
+                }
+                
+                if (!precio || isNaN(parseFloat(precio))) {
+                    errores.push(`Fila ${i}: Precio inválido (${precio})`);
+                    continue;
+                }
+                
+                // Usar GTIN como clave única, o descripción si no hay GTIN
+                const clave = gtin || descripcion.trim().toUpperCase();
+                
+                if (productosDelExcel.has(clave)) {
+                    // Producto duplicado - sumar cantidad
+                    const productoExistente = productosDelExcel.get(clave);
+                    productoExistente.cantidadTotal += parseInt(cantidad) || 1;
                 } else {
-                    // Producto nuevo
+                    // Nuevo producto
+                    productosDelExcel.set(clave, {
+                        nombre: descripcion.trim(),
+                        precio: parseFloat(precio),
+                        cantidadTotal: parseInt(cantidad) || 1,
+                        gtin: gtin,
+                        categoria: determinarCategoria(descripcion)
+                    });
+                }
+            }
+            
+            document.getElementById('import-status').textContent = `Integrando ${productosDelExcel.size} productos...`;
+            
+            // Integrar productos en el inventario existente
+            productosDelExcel.forEach((productoExcel, clave) => {
+                // Buscar si el producto ya existe en nuestro inventario
+                const productoExistente = productos.find(p => 
+                    p.nombre.toUpperCase().includes(productoExcel.nombre.toUpperCase()) ||
+                    productoExcel.nombre.toUpperCase().includes(p.nombre.toUpperCase()) ||
+                    (productoExcel.gtin && p.gtin === productoExcel.gtin)
+                );
+                
+                if (productoExistente) {
+                    // Producto existe - actualizar stock y precio
+                    productoExistente.stock += productoExcel.cantidadTotal;
+                    productoExistente.precio = productoExcel.precio; // Actualizar precio
+                    if (productoExcel.gtin && !productoExistente.gtin) {
+                        productoExistente.gtin = productoExcel.gtin;
+                    }
+                    productosActualizados++;
+                    stockSumado += productoExcel.cantidadTotal;
+                } else {
+                    // Producto nuevo - agregar al inventario
                     const nuevoProducto = {
                         id: Date.now() + Math.random(),
-                        nombre: item.nombre,
-                        precio: item.precio || 0,
-                        stock: item.cantidad || 0,
-                        categoria: item.categoria || determinarCategoria(item.nombre)
+                        nombre: productoExcel.nombre,
+                        precio: productoExcel.precio,
+                        stock: productoExcel.cantidadTotal,
+                        categoria: productoExcel.categoria,
+                        gtin: productoExcel.gtin
                     };
                     productos.push(nuevoProducto);
                     productosNuevos++;
                 }
             });
-
+            
             // Guardar cambios
             guardarDatos();
             
@@ -883,12 +946,24 @@
             mostrarProductos();
             mostrarTablaProductos();
             actualizarSelectAjuste();
-
-            // Mostrar resultados
-            mostrarResultadosImportacion(productosNuevos, productosActualizados, stockSumado);
+            verificarStockBajo();
+            
+            // Mostrar resultados detallados
+            mostrarResultadosImportacionDetallados(
+                productosNuevos, 
+                productosActualizados, 
+                stockSumado, 
+                productosDelExcel.size,
+                errores
+            );
             
             document.getElementById('import-progress').classList.add('hidden');
-            mostrarNotificacion('✅ Excel importado correctamente', 'success');
+            
+            if (errores.length === 0) {
+                mostrarNotificacion(`✅ Excel importado: ${productosNuevos} nuevos, ${productosActualizados} actualizados`, 'success');
+            } else {
+                mostrarNotificacion(`⚠️ Excel importado con ${errores.length} errores - ver detalles`, 'info');
+            }
         }
 
         // Determinar categoría por nombre
@@ -906,8 +981,8 @@
             return 'Otros';
         }
 
-        // Mostrar resultados de importación
-        function mostrarResultadosImportacion(nuevos, actualizados, stockSumado) {
+        // Mostrar resultados detallados de importación
+        function mostrarResultadosImportacionDetallados(nuevos, actualizados, stockSumado, totalProcesados, errores) {
             document.getElementById('import-results').classList.remove('hidden');
             
             document.getElementById('import-summary').innerHTML = `
@@ -923,7 +998,31 @@
                     <div class="text-2xl font-bold text-purple-600">${stockSumado}</div>
                     <div class="text-sm text-purple-700">Stock total sumado</div>
                 </div>
+                <div class="bg-gray-50 p-4 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-gray-600">${totalProcesados}</div>
+                    <div class="text-sm text-gray-700">Productos procesados</div>
+                </div>
             `;
+            
+            // Mostrar errores si los hay
+            if (errores.length > 0) {
+                document.getElementById('import-details').innerHTML = `
+                    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
+                        <h4 class="font-bold text-yellow-800 mb-2">⚠️ Errores encontrados (${errores.length}):</h4>
+                        <div class="text-sm text-yellow-700 max-h-32 overflow-y-auto">
+                            ${errores.slice(0, 10).map(error => `<div>• ${error}</div>`).join('')}
+                            ${errores.length > 10 ? `<div class="mt-2 font-medium">... y ${errores.length - 10} errores más</div>` : ''}
+                        </div>
+                    </div>
+                `;
+            } else {
+                document.getElementById('import-details').innerHTML = `
+                    <div class="bg-green-50 border-l-4 border-green-400 p-4 rounded">
+                        <h4 class="font-bold text-green-800">✅ Importación completada sin errores</h4>
+                        <p class="text-sm text-green-700">Todos los productos se procesaron correctamente.</p>
+                    </div>
+                `;
+            }
         }
 
         // Resto de funciones del TPV (adaptadas para Firebase)
