@@ -623,7 +623,230 @@
             const n = nombre.toLowerCase();
             if (n.includes('cza') || n.includes('cerveza') || n.includes('vino') || n.includes('coca') || n.includes('kas') || n.includes('zumo') || n.includes('agua') || n.includes('vermut')) {
                 return 'Bebidas';
-            } else if (n.includes('patata') ||<!DOCTYPE html>
+            } else if (n.includes('patata') || n.includes('torrezn') || n.includes('frito') || n.includes('aceitunas')) {
+                return 'Comida';
+            }
+            return 'Otros';
+        }
+
+        // Funciones de estadísticas
+        function updateEstadisticas() {
+            const totalVentas = ventas.reduce((sum, v) => sum + v.total, 0);
+            const numVentas = ventas.length;
+            const numProductos = productos.length;
+            const productosStockBajo = productos.filter(p => p.stock < 10).length;
+            const numAjustes = ajustes.length;
+
+            document.getElementById('total-ventas').textContent = `€${totalVentas.toFixed(2)}`;
+            document.getElementById('num-ventas').textContent = `${numVentas} transacciones`;
+            document.getElementById('num-productos').textContent = numProductos;
+            document.getElementById('productos-bajo-stock').textContent = `${productosStockBajo} stock bajo`;
+            document.getElementById('num-ajustes').textContent = numAjustes;
+
+            updateTablaVentas();
+        }
+
+        function updateTablaVentas() {
+            const container = document.getElementById('tabla-ventas-container');
+            
+            if (ventas.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-500 py-8">No hay ventas registradas</p>';
+                return;
+            }
+
+            const ventasRecientes = ventas.slice(-10).reverse();
+            
+            container.innerHTML = `
+                <div class="overflow-x-auto">
+                    <table class="w-full border-collapse border">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="border px-4 py-2 text-left">Fecha</th>
+                                <th class="border px-4 py-2 text-left">Items</th>
+                                <th class="border px-4 py-2 text-left">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${ventasRecientes.map(v => `
+                                <tr>
+                                    <td class="border px-4 py-2">${new Date(v.fecha).toLocaleString()}</td>
+                                    <td class="border px-4 py-2">${v.items.length} productos</td>
+                                    <td class="border px-4 py-2 font-bold text-green-600">€${v.total.toFixed(2)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function updateHistorialAjustes() {
+            const tbody = document.getElementById('tabla-ajustes');
+            
+            if (ajustes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="border px-4 py-2 text-center text-gray-500">No hay ajustes registrados</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = ajustes.slice(-20).reverse().map(a => `
+                <tr>
+                    <td class="border px-4 py-2">${new Date(a.fecha).toLocaleString()}</td>
+                    <td class="border px-4 py-2">${a.producto}</td>
+                    <td class="border px-4 py-2">${a.tipo === 'perdida' ? '📉 Pérdida' : '📈 Entrada'}</td>
+                    <td class="border px-4 py-2">${a.cantidad}</td>
+                    <td class="border px-4 py-2">${a.motivo}</td>
+                </tr>
+            `).join('');
+        }
+
+        // Funciones de configuración
+        function exportarDatos() {
+            const datos = {
+                productos: productos,
+                ventas: ventas,
+                ajustes: ajustes,
+                fecha: new Date().toISOString(),
+                version: "3.0"
+            };
+            
+            const blob = new Blob([JSON.stringify(datos, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `tpv-backup-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showNotification('✅ Backup exportado correctamente', 'success');
+        }
+
+        function importarBackup(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const datos = JSON.parse(e.target.result);
+                    
+                    if (confirm('¿Estás seguro? Esto sobrescribirá todos los datos actuales.')) {
+                        if (datos.productos) productos = datos.productos;
+                        if (datos.ventas) ventas = datos.ventas;
+                        if (datos.ajustes) ajustes = datos.ajustes;
+                        
+                        updateTablaProductos();
+                        updateSelectAjuste();
+                        updateEstadisticas();
+                        showNotification('✅ Backup importado correctamente', 'success');
+                    }
+                } catch (error) {
+                    showNotification('❌ Error al importar backup: archivo inválido', 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function borrarVentas() {
+            if (confirm('¿Estás seguro de borrar todas las ventas?')) {
+                ventas = [];
+                updateEstadisticas();
+                showNotification('✅ Ventas borradas', 'success');
+            }
+        }
+
+        function resetCompleto() {
+            if (confirm('¿ESTÁS SEGURO? Esto borrará TODOS los datos (productos, ventas, ajustes)')) {
+                if (confirm('CONFIRMACIÓN FINAL: Se perderán todos los datos')) {
+                    productos = [];
+                    ventas = [];
+                    ajustes = [];
+                    carrito = [];
+                    
+                    updateTablaProductos();
+                    updateProductGrid();
+                    updateCarrito();
+                    updateEstadisticas();
+                    showNotification('✅ Reset completo realizado', 'success');
+                }
+            }
+        }
+
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('✅ DOM cargado');
+            
+            // Conectar input de Excel
+            const excelInput = document.getElementById('excel-file');
+            if (excelInput) {
+                excelInput.addEventListener('change', function(e) {
+                    console.log('🎯 Archivo Excel seleccionado!');
+                    const file = e.target.files[0];
+                    if (file) {
+                        processExcel(file);
+                    }
+                });
+            }
+
+            // Conectar input de backup
+            const backupInput = document.getElementById('import-backup');
+            if (backupInput) {
+                backupInput.addEventListener('change', function(e) {
+                    importarBackup(e.target);
+                });
+            }
+            
+            // Drag & drop para Excel
+            const fileArea = document.querySelector('.file-upload');
+            if (fileArea) {
+                fileArea.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    fileArea.style.backgroundColor = '#f0f0f0';
+                });
+                
+                fileArea.addEventListener('dragleave', function(e) {
+                    e.preventDefault();
+                    fileArea.style.backgroundColor = '';
+                });
+                
+                fileArea.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    fileArea.style.backgroundColor = '';
+                    const file = e.dataTransfer.files[0];
+                    if (file && file.name.match(/\.(xlsx|xls)$/)) {
+                        console.log('🎯 Archivo Excel arrastrado!');
+                        processExcel(file);
+                    }
+                });
+            }
+            
+            // Inicializar la aplicación
+            showTab('tpv');
+            
+            console.log('🎉 TPV Bar Professional iniciado correctamente');
+        });
+
+        // Hacer funciones globales accesibles
+        window.showTab = showTab;
+        window.filtrarProductos = filtrarProductos;
+        window.addToCart = addToCart;
+        window.changeQuantity = changeQuantity;
+        window.procesarVenta = procesarVenta;
+        window.showFormulario = showFormulario;
+        window.hideFormulario = hideFormulario;
+        window.agregarProducto = agregarProducto;
+        window.showAjuste = showAjuste;
+        window.hideAjuste = hideAjuste;
+        window.procesarAjuste = procesarAjuste;
+        window.editProduct = editProduct;
+        window.saveEdit = saveEdit;
+        window.cancelEdit = cancelEdit;
+        window.deleteProduct = deleteProduct;
+        window.exportarDatos = exportarDatos;
+        window.borrarVentas = borrarVentas;
+        window.resetCompleto = resetCompleto;
+    </script>
+</body>
+</html><!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
