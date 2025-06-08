@@ -1,10 +1,606 @@
-<!DOCTYPE html>
+}
+
+        // Cargar datos en memoria (sin localStorage)
+        function cargarDatosLocales() {
+            // Datos de ejemplo para desarrollo
+            productos = [
+                { id: 1, nombre: 'Cerveza Amstel Radler 33cl', precio: 0.45, stock: 24, categoria: 'Bebidas' },
+                { id: 2, nombre: 'Vermut Miro Casero 1,5L', precio: 6.30, stock: 12, categoria: 'Bebidas' },
+                { id: 3, nombre: 'Vino Yllera Semi Seco 75cl', precio: 4.35, stock: 18, categoria: 'Bebidas' },
+                { id: 4, nombre: 'Vino Cuatro Rayas Verde 75cl', precio: 3.55, stock: 15, categoria: 'Bebidas' },
+                { id: 5, nombre: 'Cerveza Mahou 0,0 Tostada 33cl', precio: 0.49, stock: 30, categoria: 'Bebidas' },
+                { id: 6, nombre: 'Cerveza Estrella Galicia 25cl', precio: 0.47, stock: 25, categoria: 'Bebidas' },
+                { id: 7, nombre: 'Patatas Caseras Gallo Rojo 160gr', precio: 1.55, stock: 20, categoria: 'Comida' },
+                { id: 8, nombre: 'Torreznillos Fritos 200g', precio: 2.85, stock: 15, categoria: 'Comida' },
+                { id: 9, nombre: 'Kas Naranja 33cl', precio: 0.36, stock: 40, categoria: 'Bebidas' },
+                { id: 10, nombre: 'Kas Limón 33cl', precio: 0.36, stock: 40, categoria: 'Bebidas' },
+                { id: 11, nombre: 'Agua 50cl', precio: 0.15, stock: 50, categoria: 'Bebidas' },
+                { id: 12, nombre: 'Zumo Naranja 20cl', precio: 0.36, stock: 30, categoria: 'Bebidas' },
+                { id: 13, nombre: 'Zumo Manzana 20cl', precio: 0.36, stock: 30, categoria: 'Bebidas' },
+                { id: 14, nombre: 'Zumo Piña-Uva 20cl', precio: 0.36, stock: 30, categoria: 'Bebidas' },
+                { id: 15, nombre: 'Coca-Cola 33cl', precio: 0.61, stock: 45, categoria: 'Bebidas' },
+                { id: 16, nombre: 'Coca-Cola Zero 33cl', precio: 0.61, stock: 45, categoria: 'Bebidas' },
+                { id: 17, nombre: 'Néctar Uva 20cl', precio: 0.47, stock: 25, categoria: 'Bebidas' },
+                { id: 18, nombre: 'Servilletas 20x20 150ud', precio: 1.85, stock: 10, categoria: 'Otros' },
+                { id: 19, nombre: 'Rollo Cocina 2c 60m', precio: 2.38, stock: 8, categoria: 'Otros' },
+                { id: 20, nombre: 'Aceitunas Rellenas 130g', precio: 1.45, stock: 12, categoria: 'Comida' }
+            ];
+            
+            mostrarProductos();
+            mostrarTablaProductos();
+            actualizarSelectAjuste();
+            actualizarEstadisticas();
+        }
+
+        // Funciones de navegación
+        function mostrarTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.className = 'tab-btn px-6 py-3 rounded-xl font-bold transition-all bg-blue-600 text-white hover:bg-blue-700';
+            });
+
+            document.getElementById('tab-' + tab).classList.add('active');
+            document.getElementById('btn-' + tab).className = 'tab-btn px-6 py-3 rounded-xl font-bold transition-all bg-white text-gray-800';
+
+            if (tab === 'tpv') {
+                mostrarProductos();
+                mostrarCarrito();
+            } else if (tab === 'almacen') {
+                mostrarTablaProductos();
+                actualizarSelectAjuste();
+                verificarStockBajo();
+            } else if (tab === 'stats') {
+                actualizarEstadisticas();
+            } else if (tab === 'config') {
+                mostrarHistorialAjustes();
+            }
+        }
+
+        function mostrarProductos() {
+            const grid = document.getElementById('productos-grid');
+            const filtro = document.getElementById('filtro-categoria').value;
+            const busqueda = document.getElementById('busqueda').value.toLowerCase();
+
+            const productosFiltrados = productos.filter(p => {
+                const coincideCategoria = filtro === 'Todas' || p.categoria === filtro;
+                const coincideBusqueda = p.nombre.toLowerCase().includes(busqueda);
+                return coincideCategoria && coincideBusqueda;
+            });
+
+            if (productosFiltrados.length === 0) {
+                grid.innerHTML = '<div class="text-center py-8 text-gray-500">No hay productos disponibles</div>';
+                return;
+            }
+
+            grid.innerHTML = productosFiltrados.map(p => `
+                <div class="border rounded-xl p-4 hover:shadow-lg transition-shadow ${p.stock <= 0 ? 'opacity-50' : ''}">
+                    <div class="flex justify-between mb-2">
+                        <h3 class="font-bold text-sm">${p.nombre}</h3>
+                        <span class="text-lg font-bold text-green-600">€${p.precio.toFixed(2)}</span>
+                    </div>
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm font-medium ${p.stock < 10 ? 'text-red-600' : 'text-gray-600'}">📦 ${p.stock}</span>
+                        <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">${getCategoriaIcon(p.categoria)} ${p.categoria}</span>
+                    </div>
+                    <button onclick="agregarAlCarrito(${p.id})" ${p.stock <= 0 ? 'disabled' : ''} 
+                        class="w-full py-2 px-4 rounded-lg font-medium text-sm ${p.stock <= 0 ? 'bg-gray-300 text-gray-500' : 'bg-blue-600 text-white hover:bg-blue-700'}">
+                        ${p.stock <= 0 ? '❌ Sin Stock' : '➕ Agregar'}
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function getCategoriaIcon(categoria) {
+            switch(categoria) {
+                case 'Bebidas': return '🍺';
+                case 'Comida': return '🍕';
+                case 'Otros': return '📦';
+                default: return '📦';
+            }
+        }
+
+        function filtrarProductos() {
+            mostrarProductos();
+        }
+
+        function agregarAlCarrito(id) {
+            const producto = productos.find(p => p.id === id);
+            if (producto.stock <= 0) {
+                mostrarNotificacion('❌ Sin stock disponible', 'error');
+                return;
+            }
+
+            const item = carrito.find(i => i.id === id);
+            if (item) {
+                if (item.cantidad >= producto.stock) {
+                    mostrarNotificacion('❌ Stock insuficiente', 'error');
+                    return;
+                }
+                item.cantidad++;
+            } else {
+                carrito.push({ ...producto, cantidad: 1 });
+            }
+            mostrarCarrito();
+        }
+
+        function mostrarCarrito() {
+            const contenido = document.getElementById('carrito-contenido');
+            
+            if (carrito.length === 0) {
+                contenido.innerHTML = `
+                    <div class="text-center py-8">
+                        <div class="text-6xl mb-4">🛒</div>
+                        <p class="text-gray-500">Carrito vacío</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const total = carrito.reduce((s, i) => s + (i.precio * i.cantidad), 0);
+
+            contenido.innerHTML = `
+                <div class="space-y-3 mb-4 max-h-64 overflow-y-auto">
+                    ${carrito.map(item => `
+                        <div class="flex justify-between items-center bg-gray-50 rounded-lg p-3">
+                            <div class="flex-1">
+                                <h4 class="font-medium text-sm">${item.nombre}</h4>
+                                <p class="text-sm text-gray-600">€${item.precio.toFixed(2)} c/u</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button onclick="cambiarCantidad(${item.id}, ${item.cantidad - 1})" class="w-8 h-8 bg-red-100 text-red-600 rounded-full text-sm">➖</button>
+                                <span class="w-8 text-center font-bold">${item.cantidad}</span>
+                                <button onclick="cambiarCantidad(${item.id}, ${item.cantidad + 1})" class="w-8 h-8 bg-green-100 text-green-600 rounded-full text-sm">➕</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="border-t pt-4">
+                    <div class="flex justify-between mb-4">
+                        <span class="text-xl font-bold">Total:</span>
+                        <span class="text-2xl font-bold text-green-600">€${total.toFixed(2)}</span>
+                    </div>
+                    <button onclick="procesarVenta()" class="w-full bg-green-600 text-white py-3 px-4 rounded-xl font-bold text-lg hover:bg-green-700">
+                        💳 Procesar Venta
+                    </button>
+                </div>
+            `;
+        }
+
+        function cambiarCantidad(id, nuevaCantidad) {
+            if (nuevaCantidad <= 0) {
+                carrito = carrito.filter(i => i.id !== id);
+            } else {
+                const producto = productos.find(p => p.id === id);
+                if (nuevaCantidad > producto.stock) {
+                    mostrarNotificacion('❌ Stock insuficiente', 'error');
+                    return;
+                }
+                const item = carrito.find(i => i.id === id);
+                item.cantidad = nuevaCantidad;
+            }
+            mostrarCarrito();
+        }
+
+        function procesarVenta() {
+            if (carrito.length === 0) {
+                mostrarNotificacion('❌ Carrito vacío', 'error');
+                return;
+            }
+
+            const total = carrito.reduce((s, i) => s + (i.precio * i.cantidad), 0);
+            
+            // Actualizar stock
+            carrito.forEach(item => {
+                const producto = productos.find(p => p.id === item.id);
+                producto.stock -= item.cantidad;
+            });
+
+            // Registrar venta
+            const nuevaVenta = {
+                id: Date.now(),
+                fecha: new Date().toISOString(),
+                usuario: usuarioId,
+                items: [...carrito],
+                total: total
+            };
+            
+            ventas.push(nuevaVenta);
+
+            carrito = [];
+            mostrarCarrito();
+            mostrarProductos();
+            mostrarNotificacion(`✅ Venta procesada: €${total.toFixed(2)}`, 'success');
+        }
+
+        // Funciones del almacén
+        function mostrarFormulario() {
+            document.getElementById('formulario-nuevo').classList.remove('hidden');
+        }
+
+        function ocultarFormulario() {
+            document.getElementById('formulario-nuevo').classList.add('hidden');
+            document.getElementById('nuevo-nombre').value = '';
+            document.getElementById('nuevo-precio').value = '';
+            document.getElementById('nuevo-stock').value = '';
+        }
+
+        function agregarProducto() {
+            const nombre = document.getElementById('nuevo-nombre').value;
+            const precio = parseFloat(document.getElementById('nuevo-precio').value);
+            const stock = parseInt(document.getElementById('nuevo-stock').value);
+            const categoria = document.getElementById('nuevo-categoria').value;
+
+            if (!nombre || !precio || isNaN(stock)) {
+                mostrarNotificacion('❌ Todos los campos son obligatorios', 'error');
+                return;
+            }
+
+            const nuevoProducto = {
+                id: Date.now(),
+                nombre: nombre,
+                precio: precio,
+                stock: stock,
+                categoria: categoria
+            };
+
+            productos.push(nuevoProducto);
+            
+            ocultarFormulario();
+            mostrarTablaProductos();
+            actualizarSelectAjuste();
+            mostrarNotificacion('✅ Producto agregado correctamente', 'success');
+        }
+
+        function mostrarAjuste() {
+            document.getElementById('formulario-ajuste').classList.remove('hidden');
+        }
+
+        function ocultarAjuste() {
+            document.getElementById('formulario-ajuste').classList.add('hidden');
+            document.getElementById('ajuste-producto').value = '';
+            document.getElementById('ajuste-cantidad').value = '';
+            document.getElementById('ajuste-motivo').value = '';
+        }
+
+        function actualizarSelectAjuste() {
+            const select = document.getElementById('ajuste-producto');
+            select.innerHTML = '<option value="">Seleccionar producto</option>' + 
+                productos.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+        }
+
+        function procesarAjuste() {
+            const productoId = parseInt(document.getElementById('ajuste-producto').value);
+            const tipo = document.getElementById('ajuste-tipo').value;
+            const cantidad = parseInt(document.getElementById('ajuste-cantidad').value);
+            const motivo = document.getElementById('ajuste-motivo').value;
+
+            if (!productoId || !cantidad || !motivo) {
+                mostrarNotificacion('❌ Todos los campos son obligatorios', 'error');
+                return;
+            }
+
+            const producto = productos.find(p => p.id === productoId);
+            const stockAnterior = producto.stock;
+            
+            if (tipo === 'perdida') {
+                producto.stock = Math.max(0, producto.stock - cantidad);
+            } else {
+                producto.stock += cantidad;
+            }
+
+            const nuevoAjuste = {
+                id: Date.now(),
+                fecha: new Date().toISOString(),
+                usuario: usuarioId,
+                producto: producto.nombre,
+                tipo: tipo,
+                cantidad: cantidad,
+                motivo: motivo,
+                stockAnterior: stockAnterior,
+                stockNuevo: producto.stock
+            };
+
+            ajustes.push(nuevoAjuste);
+
+            ocultarAjuste();
+            mostrarTablaProductos();
+            verificarStockBajo();
+            mostrarNotificacion('✅ Ajuste registrado correctamente', 'success');
+        }
+
+        function mostrarTablaProductos() {
+            const tbody = document.getElementById('tabla-productos');
+            
+            if (productos.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="border px-4 py-2 text-center text-gray-500">No hay productos registrados</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = productos.map(p => `
+                <tr class="${p.stock < 10 ? 'bg-red-50' : ''}">
+                    <td class="border px-4 py-2">
+                        ${editandoId === p.id ? 
+                            `<input id="edit-nombre" value="${p.nombre}" class="w-full px-2 py-1 border rounded">` :
+                            `<span class="font-medium">${p.nombre}</span>`
+                        }
+                    </td>
+                    <td class="border px-4 py-2">
+                        ${editandoId === p.id ? 
+                            `<input id="edit-precio" type="number" step="0.01" value="${p.precio}" class="w-full px-2 py-1 border rounded">` :
+                            `<span class="font-bold text-green-600">€${p.precio.toFixed(2)}</span>`
+                        }
+                    </td>
+                    <td class="border px-4 py-2">
+                        ${editandoId === p.id ? 
+                            `<input id="edit-stock" type="number" value="${p.stock}" class="w-full px-2 py-1 border rounded">` :
+                            `<span class="${p.stock < 10 ? 'font-bold text-red-600' : ''}">${p.stock}</span>`
+                        }
+                    </td>
+                    <td class="border px-4 py-2">
+                        <span class="bg-gray-100 px-2 py-1 rounded text-xs">${getCategoriaIcon(p.categoria)} ${p.categoria}</span>
+                    </td>
+                    <td class="border px-4 py-2">
+                        ${editandoId === p.id ? 
+                            `<div class="flex gap-2">
+                                <button onclick="guardarEdicion(${p.id})" class="bg-green-600 text-white px-3 py-1 rounded text-sm">💾</button>
+                                <button onclick="cancelarEdicion()" class="bg-gray-500 text-white px-3 py-1 rounded text-sm">❌</button>
+                            </div>` :
+                            `<div class="flex gap-2">
+                                <button onclick="editarProducto(${p.id})" class="bg-blue-600 text-white px-3 py-1 rounded text-sm">✏️</button>
+                                <button onclick="eliminarProducto(${p.id})" class="bg-red-600 text-white px-3 py-1 rounded text-sm">🗑️</button>
+                            </div>`
+                        }
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function editarProducto(id) {
+            editandoId = id;
+            mostrarTablaProductos();
+        }
+
+        function guardarEdicion(id) {
+            const nombre = document.getElementById('edit-nombre').value;
+            const precio = parseFloat(document.getElementById('edit-precio').value);
+            const stock = parseInt(document.getElementById('edit-stock').value);
+
+            if (!nombre || !precio || isNaN(stock) || stock < 0) {
+                mostrarNotificacion('❌ Datos inválidos', 'error');
+                return;
+            }
+
+            const producto = productos.find(p => p.id === id);
+            producto.nombre = nombre;
+            producto.precio = precio;
+            producto.stock = stock;
+
+            editandoId = null;
+            mostrarTablaProductos();
+            verificarStockBajo();
+            mostrarNotificacion('✅ Producto actualizado', 'success');
+        }
+
+        function cancelarEdicion() {
+            editandoId = null;
+            mostrarTablaProductos();
+        }
+
+        function eliminarProducto(id) {
+            if (confirm('¿Estás seguro de eliminar este producto?')) {
+                productos = productos.filter(p => p.id !== id);
+                mostrarTablaProductos();
+                actualizarSelectAjuste();
+                mostrarNotificacion('✅ Producto eliminado', 'success');
+            }
+        }
+
+        function verificarStockBajo() {
+            const productosStockBajo = productos.filter(p => p.stock < 10);
+            const alerta = document.getElementById('alerta-stock');
+            
+            if (productosStockBajo.length > 0) {
+                document.getElementById('productos-stock-bajo').innerHTML = 
+                    productosStockBajo.map(p => `${p.nombre} (${p.stock})`).join(', ');
+                alerta.classList.remove('hidden');
+            } else {
+                alerta.classList.add('hidden');
+            }
+        }
+
+        // Funciones de estadísticas
+        function actualizarEstadisticas() {
+            const totalVentas = ventas.reduce((sum, v) => sum + v.total, 0);
+            const numVentas = ventas.length;
+            const numProductos = productos.length;
+            const productosStockBajo = productos.filter(p => p.stock < 10).length;
+            const numAjustes = ajustes.length;
+
+            document.getElementById('total-ventas').textContent = `€${totalVentas.toFixed(2)}`;
+            document.getElementById('num-ventas').textContent = `${numVentas} transacciones`;
+            document.getElementById('num-productos').textContent = numProductos;
+            document.getElementById('productos-bajo-stock').textContent = `${productosStockBajo} stock bajo`;
+            document.getElementById('num-ajustes').textContent = numAjustes;
+            document.getElementById('usuarios-activos').textContent = '1';
+
+            mostrarTablaVentas();
+        }
+
+        function mostrarTablaVentas() {
+            const container = document.getElementById('tabla-ventas-container');
+            
+            if (ventas.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-500 py-8">No hay ventas registradas</p>';
+                return;
+            }
+
+            const ventasRecientes = ventas.slice(-10).reverse();
+            
+            container.innerHTML = `
+                <div class="overflow-x-auto">
+                    <table class="w-full border-collapse border">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="border px-4 py-2 text-left">Fecha</th>
+                                <th class="border px-4 py-2 text-left">Usuario</th>
+                                <th class="border px-4 py-2 text-left">Items</th>
+                                <th class="border px-4 py-2 text-left">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${ventasRecientes.map(v => `
+                                <tr>
+                                    <td class="border px-4 py-2">${new Date(v.fecha).toLocaleString()}</td>
+                                    <td class="border px-4 py-2">${v.usuario ? v.usuario.slice(-8) : 'Local'}</td>
+                                    <td class="border px-4 py-2">${v.items.length} productos</td>
+                                    <td class="border px-4 py-2 font-bold text-green-600">€${v.total.toFixed(2)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function mostrarHistorialAjustes() {
+            const tbody = document.getElementById('tabla-ajustes');
+            
+            if (ajustes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="border px-4 py-2 text-center text-gray-500">No hay ajustes registrados</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = ajustes.slice(-20).reverse().map(a => `
+                <tr>
+                    <td class="border px-4 py-2">${new Date(a.fecha).toLocaleString()}</td>
+                    <td class="border px-4 py-2">${a.usuario ? a.usuario.slice(-8) : 'Local'}</td>
+                    <td class="border px-4 py-2">${a.producto}</td>
+                    <td class="border px-4 py-2">${a.tipo === 'perdida' ? '📉 Pérdida' : '📈 Entrada'}</td>
+                    <td class="border px-4 py-2">${a.cantidad}</td>
+                    <td class="border px-4 py-2">${a.motivo}</td>
+                </tr>
+            `).join('');
+        }
+
+        // Funciones de configuración
+        function exportarDatos() {
+            const datos = {
+                productos: productos,
+                ventas: ventas,
+                ajustes: ajustes,
+                fecha: new Date().toISOString(),
+                version: "2.0"
+            };
+            
+            const blob = new Blob([JSON.stringify(datos, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `tpv-backup-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            mostrarNotificacion('✅ Backup exportado correctamente', 'success');
+        }
+
+        function importarBackup(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const datos = JSON.parse(e.target.result);
+                    
+                    if (confirm('¿Estás seguro? Esto sobrescribirá todos los datos actuales.')) {
+                        if (datos.productos) productos = datos.productos;
+                        if (datos.ventas) ventas = datos.ventas;
+                        if (datos.ajustes) ajustes = datos.ajustes;
+                        
+                        mostrarTablaProductos();
+                        actualizarSelectAjuste();
+                        actualizarEstadisticas();
+                        mostrarNotificacion('✅ Backup importado correctamente', 'success');
+                    }
+                } catch (error) {
+                    mostrarNotificacion('❌ Error al importar backup: archivo inválido', 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function borrarVentas() {
+            if (confirm('¿Estás seguro de borrar todas las ventas?')) {
+                ventas = [];
+                actualizarEstadisticas();
+                mostrarNotificacion('✅ Ventas borradas', 'success');
+            }
+        }
+
+        function resetCompleto() {
+            if (confirm('¿ESTÁS SEGURO? Esto borrará TODOS los datos (productos, ventas, ajustes)')) {
+                if (confirm('CONFIRMACIÓN FINAL: Se perderán todos los datos')) {
+                    productos = [];
+                    ventas = [];
+                    ajustes = [];
+                    carrito = [];
+                    
+                    console.log('Datos limpiados en memoria');
+                    
+                    mostrarTab('tpv');
+                    mostrarNotificacion('✅ Reset completo realizado', 'success');
+                }
+            }
+        }
+
+        function sincronizarDatos() {
+            mostrarNotificacion('❌ No conectado a Firebase', 'error');
+        }
+
+        function inicializarBaseDatos() {
+            mostrarNotificacion('⚠️ Configurar Firebase primero', 'info');
+        }
+
+        // Inicializar aplicación
+        document.addEventListener('DOMContentLoaded', function() {
+            cargarDatosLocales();
+            document.getElementById('connection-status').innerHTML = '<span class="status-offline"></span>Modo Desarrollo';
+            document.getElementById('users-online').textContent = '👥 1 usuario local';
+            mostrarNotificacion('⚠️ Firebase no configurado - usando modo desarrollo', 'info');
+            mostrarTab('tpv');
+        });
+
+        // Hacer funciones globales accesibles
+        window.mostrarTab = mostrarTab;
+        window.filtrarProductos = filtrarProductos;
+        window.agregarAlCarrito = agregarAlCarrito;
+        window.cambiarCantidad = cambiarCantidad;
+        window.procesarVenta = procesarVenta;
+        window.mostrarFormulario = mostrarFormulario;
+        window.ocultarFormulario = ocultarFormulario;
+        window.agregarProducto = agregarProducto;
+        window.mostrarAjuste = mostrarAjuste;
+        window.ocultarAjuste = ocultarAjuste;
+        window.procesarAjuste = procesarAjuste;
+        window.editarProducto = editarProducto;
+        window.guardarEdicion = guardarEdicion;
+        window.cancelarEdicion = cancelarEdicion;
+        window.eliminarProducto = eliminarProducto;
+        window.exportarDatos = exportarDatos;
+        window.importarBackup = importarBackup;
+        window.borrarVentas = borrarVentas;
+        window.resetCompleto = resetCompleto;
+        window.sincronizarDatos = sincronizarDatos;
+        window.inicializarBaseDatos = inicializarBaseDatos;
+        window.procesarExcel = procesarExcel;
+    </script>
+</body>
+</html><!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TPV Bar Professional - Multi-Usuario</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         /* Reset y base */
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -633,12 +1229,317 @@
 
     <!-- Firebase SDK y SheetJS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script type="module">
-        // Import Firebase modules
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
-        import { getDatabase, ref, push, set, get, onValue, off, remove, update } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
-        
-        // SheetJS ya está cargado globalmente como XLSX
+    <script>
+        // Variables globales
+        let productos = [];
+        let carrito = [];
+        let ventas = [];
+        let ajustes = [];
+        let editandoId = null;
+        let usuarioId = 'user_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+        let isConnected = false;
+        let app, database;
+
+        // Firebase configuration (REEMPLAZAR CON TU CONFIGURACIÓN)
+        const firebaseConfig = {
+            apiKey: "TU_API_KEY",
+            authDomain: "tu-proyecto.firebaseapp.com",
+            databaseURL: "https://tu-proyecto-default-rtdb.firebaseio.com/",
+            projectId: "tu-proyecto",
+            storageBucket: "tu-proyecto.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "tu-app-id"
+        };
+
+        // Mostrar notificación
+        function mostrarNotificacion(mensaje, tipo = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${tipo}`;
+            notification.textContent = mensaje;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        // Procesar archivo Excel REAL - VERSIÓN CORREGIDA
+        function procesarExcel(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            console.log('📁 Archivo seleccionado:', file.name);
+            document.getElementById('import-progress').classList.remove('hidden');
+            document.getElementById('import-results').classList.add('hidden');
+            document.getElementById('import-status').textContent = 'Leyendo archivo Excel...';
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    console.log('📖 Leyendo archivo...');
+                    
+                    // Verificar que XLSX esté disponible
+                    if (typeof XLSX === 'undefined') {
+                        throw new Error('XLSX no está disponible');
+                    }
+
+                    // Leer el archivo Excel con SheetJS
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { 
+                        type: 'array',
+                        cellDates: true,
+                        cellNF: true,
+                        cellText: false
+                    });
+                    
+                    console.log('📊 Archivo Excel leído correctamente');
+                    document.getElementById('import-status').textContent = 'Analizando estructura...';
+                    
+                    // Procesar la primera hoja
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+                        header: 1,
+                        defval: '',
+                        blankrows: false
+                    });
+                    
+                    console.log(`📋 ${jsonData.length} filas encontradas`);
+                    console.log('🏷️ Encabezados:', jsonData[0]);
+                    
+                    document.getElementById('import-status').textContent = `Procesando ${jsonData.length} filas...`;
+                    
+                    // Procesar datos reales del Excel
+                    procesarDatosExcelReal(jsonData);
+                    
+                } catch (error) {
+                    console.error('❌ Error procesando Excel:', error);
+                    mostrarNotificacion('❌ Error procesando Excel: ' + error.message, 'error');
+                    document.getElementById('import-progress').classList.add('hidden');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Procesar datos REALES del Excel
+        function procesarDatosExcelReal(jsonData) {
+            let productosNuevos = 0;
+            let productosActualizados = 0;
+            let stockSumado = 0;
+            let errores = [];
+            let filasValidas = 0;
+            
+            console.log('🚀 Iniciando procesamiento...');
+            
+            // Mapa para agrupar productos únicos
+            const productosDelExcel = new Map();
+            
+            // Procesar cada fila (empezar desde fila 1, saltar encabezados)
+            for (let i = 1; i < jsonData.length; i++) {
+                const fila = jsonData[i];
+                
+                // Log cada 5 filas para debug
+                if (i <= 5 || i % 10 === 0) {
+                    console.log(`📝 Fila ${i}:`, fila ? fila.slice(10, 16) : 'undefined');
+                }
+                
+                // Verificar que la fila tenga datos suficientes
+                if (!fila || fila.length < 16) {
+                    errores.push(`Fila ${i}: Datos incompletos (${fila ? fila.length : 0} columnas)`);
+                    continue;
+                }
+                
+                const descripcion = fila[11] ? String(fila[11]).trim() : ''; // Descripción Art.
+                const precio = parseFloat(fila[12]) || 0; // Precio/Pieza/Kg
+                const cantidad = parseInt(fila[15]) || 1; // Cantidad
+                const gtin = fila[10] ? String(fila[10]).trim() : ''; // GTIN
+                
+                // Validaciones
+                if (!descripcion || descripcion === '' || descripcion === 'undefined') {
+                    errores.push(`Fila ${i}: Sin descripción válida`);
+                    continue;
+                }
+                
+                if (!precio || precio <= 0 || isNaN(precio)) {
+                    errores.push(`Fila ${i}: Precio inválido (${fila[12]})`);
+                    continue;
+                }
+                
+                filasValidas++;
+                
+                // Usar GTIN como clave única, o descripción si no hay GTIN
+                const clave = gtin || descripcion.toUpperCase();
+                
+                if (productosDelExcel.has(clave)) {
+                    // Producto duplicado - sumar cantidad
+                    const productoExistente = productosDelExcel.get(clave);
+                    productoExistente.cantidadTotal += cantidad;
+                    productoExistente.filas.push(i);
+                    console.log(`🔄 Producto duplicado en fila ${i}: ${descripcion}`);
+                } else {
+                    // Nuevo producto
+                    productosDelExcel.set(clave, {
+                        nombre: descripcion,
+                        precio: precio,
+                        cantidadTotal: cantidad,
+                        gtin: gtin,
+                        categoria: determinarCategoria(descripcion),
+                        filas: [i]
+                    });
+                    console.log(`➕ Nuevo producto en fila ${i}: ${descripcion}`);
+                }
+            }
+            
+            console.log(`✅ Procesamiento completado:`);
+            console.log(`   📊 Filas válidas: ${filasValidas}`);
+            console.log(`   ❌ Errores: ${errores.length}`);
+            console.log(`   🛍️ Productos únicos: ${productosDelExcel.size}`);
+            
+            document.getElementById('import-status').textContent = 
+                `Integrando ${productosDelExcel.size} productos únicos...`;
+            
+            // Integrar productos en el inventario existente
+            let contador = 0;
+            for (const [clave, productoExcel] of productosDelExcel) {
+                contador++;
+                
+                // Buscar si el producto ya existe en nuestro inventario
+                const productoExistente = productos.find(p => {
+                    // Comparación por GTIN (más precisa)
+                    if (productoExcel.gtin && p.gtin === productoExcel.gtin) return true;
+                    
+                    // Comparación por nombre (más flexible)
+                    const nombreExistente = p.nombre.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    const nombreNuevo = productoExcel.nombre.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    
+                    return nombreExistente.includes(nombreNuevo) || 
+                           nombreNuevo.includes(nombreExistente);
+                });
+                
+                if (productoExistente) {
+                    // Producto existe - actualizar stock y precio
+                    productoExistente.stock += productoExcel.cantidadTotal;
+                    productoExistente.precio = productoExcel.precio;
+                    if (productoExcel.gtin && !productoExistente.gtin) {
+                        productoExistente.gtin = productoExcel.gtin;
+                    }
+                    productosActualizados++;
+                    stockSumado += productoExcel.cantidadTotal;
+                    
+                    console.log(`🔄 Actualizado: ${productoExistente.nombre} (+${productoExcel.cantidadTotal})`);
+                } else {
+                    // Producto nuevo - agregar al inventario
+                    const nuevoProducto = {
+                        id: Date.now() + Math.random() + contador,
+                        nombre: productoExcel.nombre,
+                        precio: productoExcel.precio,
+                        stock: productoExcel.cantidadTotal,
+                        categoria: productoExcel.categoria,
+                        gtin: productoExcel.gtin || null
+                    };
+                    productos.push(nuevoProducto);
+                    productosNuevos++;
+                    
+                    console.log(`➕ Nuevo: ${nuevoProducto.nombre} (${nuevoProducto.stock})`);
+                }
+            }
+            
+            console.log(`🎯 Integración completada:`);
+            console.log(`   ➕ Productos nuevos: ${productosNuevos}`);
+            console.log(`   🔄 Productos actualizados: ${productosActualizados}`);
+            console.log(`   📦 Stock total sumado: ${stockSumado}`);
+            
+            // Actualizar interfaz
+            mostrarProductos();
+            mostrarTablaProductos();
+            actualizarSelectAjuste();
+            verificarStockBajo();
+            
+            // Mostrar resultados
+            mostrarResultadosImportacionDetallados(
+                productosNuevos, 
+                productosActualizados, 
+                stockSumado, 
+                productosDelExcel.size,
+                errores
+            );
+            
+            document.getElementById('import-progress').classList.add('hidden');
+            
+            // Notificación final
+            if (errores.length === 0) {
+                mostrarNotificacion(
+                    `✅ ¡Éxito! ${productosNuevos} nuevos + ${productosActualizados} actualizados = ${productosDelExcel.size} productos totales`, 
+                    'success'
+                );
+            } else {
+                mostrarNotificacion(
+                    `⚠️ Importado con ${errores.length} errores. ${productosNuevos + productosActualizados} productos procesados.`, 
+                    'info'
+                );
+            }
+            
+            console.log('🎉 Importación Excel completada!');
+        }
+
+        // Determinar categoría por nombre
+        function determinarCategoria(nombre) {
+            const nombreLower = nombre.toLowerCase();
+            if (nombreLower.includes('cza') || nombreLower.includes('cerveza') || 
+                nombreLower.includes('vino') || nombreLower.includes('vermut') ||
+                nombreLower.includes('coca') || nombreLower.includes('kas') ||
+                nombreLower.includes('zumo') || nombreLower.includes('agua')) {
+                return 'Bebidas';
+            } else if (nombreLower.includes('patata') || nombreLower.includes('torrezn') ||
+                       nombreLower.includes('frito') || nombreLower.includes('aceitunas')) {
+                return 'Comida';
+            }
+            return 'Otros';
+        }
+
+        // Mostrar resultados detallados de importación
+        function mostrarResultadosImportacionDetallados(nuevos, actualizados, stockSumado, totalProcesados, errores) {
+            document.getElementById('import-results').classList.remove('hidden');
+            
+            document.getElementById('import-summary').innerHTML = `
+                <div class="bg-green-50 p-4 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-green-600">${nuevos}</div>
+                    <div class="text-sm text-green-700">Productos nuevos</div>
+                </div>
+                <div class="bg-blue-50 p-4 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-blue-600">${actualizados}</div>
+                    <div class="text-sm text-blue-700">Productos actualizados</div>
+                </div>
+                <div class="bg-purple-50 p-4 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-purple-600">${stockSumado}</div>
+                    <div class="text-sm text-purple-700">Stock total sumado</div>
+                </div>
+                <div class="bg-gray-50 p-4 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-gray-600">${totalProcesados}</div>
+                    <div class="text-sm text-gray-700">Productos procesados</div>
+                </div>
+            `;
+            
+            // Mostrar errores si los hay
+            if (errores.length > 0) {
+                document.getElementById('import-details').innerHTML = `
+                    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
+                        <h4 class="font-bold text-yellow-800 mb-2">⚠️ Errores encontrados (${errores.length}):</h4>
+                        <div class="text-sm text-yellow-700 max-h-32 overflow-y-auto">
+                            ${errores.slice(0, 10).map(error => `<div>• ${error}</div>`).join('')}
+                            ${errores.length > 10 ? `<div class="mt-2 font-medium">... y ${errores.length - 10} errores más</div>` : ''}
+                        </div>
+                    </div>
+                `;
+            } else {
+                document.getElementById('import-details').innerHTML = `
+                    <div class="bg-green-50 border-l-4 border-green-400 p-4 rounded">
+                        <h4 class="font-bold text-green-800">✅ Importación completada sin errores</h4>
+                        <p class="text-sm text-green-700">Todos los productos se procesaron correctamente.</p>
+                    </div>
+                `;
+            }
+        }
 
         // Firebase configuration (REEMPLAZAR CON TU CONFIGURACIÓN)
         const firebaseConfig = {
